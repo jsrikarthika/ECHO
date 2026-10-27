@@ -1,6 +1,13 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+from database import (
+    initialize_database,
+    save_attempt,
+    get_student_history,
+)
+
+initialize_database()
 
 # ---------------------------------------
 # ECHO: Adaptive Deep Learning Tutor
@@ -381,8 +388,16 @@ if submitted:
             for concept, answer in answers.items()
         }
 
-        st.success("Assessment submitted successfully!")
+        # Save each submitted answer to SQLite
+        for concept, result in st.session_state.results.items():
+            save_attempt(
+                student_name=name,
+                concept=concept,
+                selected_answer=result["selected"],
+                is_correct=result["correct"],
+            )
 
+        st.success("Assessment submitted successfully!")
 # Results
 if st.session_state.results:
     results = st.session_state.results
@@ -623,3 +638,51 @@ else:
         "Complete and submit the initial assessment to receive "
         "personalized practice recommendations."
     )
+
+    # ---------------------------------------
+# SAVED LEARNING HISTORY
+# ---------------------------------------
+
+st.divider()
+st.header("🗂️ Saved Learning History")
+
+history_name = st.text_input(
+    "Enter your name to view saved attempts",
+    key="history_student_name",
+)
+
+if st.button("Load My History"):
+    if not history_name.strip():
+        st.warning("Please enter your name.")
+    else:
+        history = get_student_history(history_name)
+
+        if history:
+            history_df = pd.DataFrame(
+                history,
+                columns=["Concept", "Correct", "Attempted At"],
+            )
+
+            history_df["Result"] = history_df["Correct"].map({
+                1: "Correct",
+                0: "Incorrect",
+            })
+
+            st.dataframe(
+                history_df.drop(columns=["Correct"]),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            accuracy = (
+                history_df["Correct"].sum()
+                / len(history_df)
+                * 100
+            )
+
+            st.metric(
+                "Historical Answer Accuracy",
+                f"{accuracy:.1f}%",
+            )
+        else:
+            st.info("No saved attempts found for this name.")
